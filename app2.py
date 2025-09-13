@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import plotly.express as px 
+import plotly.express as px
+import plotly.graph_objects as go 
 
 data = pd.read_csv('municipios.csv')
 
@@ -14,7 +15,7 @@ st.set_page_config(
 
 
 munis = data ['entidad'].unique().tolist()
-mun=st.selectbox ("Seleccione un municipio:",
+mun=st.selectbox ("Seleccione un municipio y un año.",
              munis)
 filtro = data[data['entidad'] == mun]
              
@@ -70,16 +71,42 @@ with col1:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 with col2:
-    tabla_heat = filtro.groupby(["anio", "clas_gen"])["total_recaudo"].sum().reset_index()
-    fig_heat = px.density_heatmap(
-        tabla_heat,
-        x="anio",
-        y="clas_gen",
-        z="total_recaudo",
-        color_continuous_scale=["#877d5e", "#bdce8a", "#eecf8e"],
-        title=f"Mapa de calor de ingresos en {mun}"
+    tabla = filtro.groupby(["anio", "clas_gen"])["total_recaudo"].sum().reset_index()
+    tabla = tabla.sort_values(by=["anio", "total_recaudo"], ascending=[True, False])
+    fig_lolli = go.Figure()
+    for categoria in tabla["clas_gen"].unique():
+     df_cat = tabla[tabla["clas_gen"] == categoria]
+     fig_lolli.add_trace(go.Scatter(
+        x = df_cat["anio"],
+        y = df_cat["total_recaudo"],
+        mode = 'markers',
+        name = categoria,
+        marker=dict(size=10)  # tamaño del punto en la punta
+     ))
+    fig_lolli.add_trace(go.Scatter(
+        x = df_cat["anio"],
+        y = [0]*len(df_cat["anio"]),  # base en cero
+        mode = 'lines',
+        name = categoria + "_line",
+        line=dict(width=2),
+        showlegend=False  # para que las líneas no sean legend separadas
+     ))
+     # Otra forma más precisa:
+    for _, row in df_cat.iterrows():
+        fig_lolli.add_shape(dict(
+            type="line",
+            x0=row["anio"], y0=0,
+            x1=row["anio"], y1=row["total_recaudo"],
+            line=dict(color="dimgray", width=2)
+        ))
+    fig_lolli.update_layout(
+    title=f"Gráfico tipo Lollipop de ingresos en {"mun"}",
+    xaxis_title="Año",
+    yaxis_title="Total de recaudo",
+    template="plotly_white",
+    hovermode="x unified"
     )
-    st.plotly_chart(fig_heat, use_container_width=True)
+    st.plotly_chart(fig_lolli, use_container_width=True)
 
 #treemap
 fin= (filtro
@@ -97,19 +124,33 @@ st.plotly_chart(fig)
 
 
 # Gráfico de línea (evolución completa)
-colores_verdes = {
-    "Aguazul": "#877d5e",
-    "Barrancas": "#bdce8a",
-    "Barrancabermeja": "#eecf8e"
+
+tabla_pie = filtro.groupby("clas_gen")["total_recaudo"].sum().reset_index()
+
+# Colores personalizados
+colores = {
+    "Ingresos propios": "#877d5e",  
+    "Transferencias": "#bdce8a",     
+    "Recursos de capital": "#eecf8e"
 }
 
-fig_line = px.line(
-    filtro,
-    x="anio",
-    y="total_recaudo",
-    color="entidad",
-    markers=True,
-    color_discrete_map=colores_verdes,
-    title="Evolución del recaudo por entidad"
+# Gráfico de torta
+fig_pie = px.pie(
+    tabla_pie,
+    names="clas_gen",
+    values="total_recaudo",
+    color="clas_gen",
+    color_discrete_map=colores,
+    title="📊 Distribución del recaudo fiscal por categoría"
 )
-st.plotly_chart(fig_line, use_container_width=True)
+fig_pie.update_layout(
+    width=800,
+    height=600,
+    title_font_size=20,
+    legend=dict(
+        font=dict(size=25)  # tamaño de la letra de la leyenda
+    )
+)
+# Mostrar en Streamlit
+st.plotly_chart(fig_pie, use_container_width=True)
+
